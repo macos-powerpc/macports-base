@@ -1750,9 +1750,9 @@ proc portconfigure::add_compiler_port_dependencies {compiler} {
                 depends_lib-append "path:lib/libgcc/libgcc_s.1.dylib:libgcc"
             } elseif {${configure.cxx_stdlib} eq "libc++" && ${os.major} < 11} {
                 # libc++ does not exist on these systems
-                ui_debug "Adding depends_lib libcxx"
-                depends_lib-delete "port:libcxx"
-                depends_lib-append "port:libcxx"
+                ui_debug "Adding depends_lib libcxx-powerpc"
+                depends_lib-delete "port:libcxx-powerpc"
+                depends_lib-append "port:libcxx-powerpc"
             }
             if {${compiler.openmp_version} ne ""} {
                 ui_debug "Adding depends_lib port:libomp"

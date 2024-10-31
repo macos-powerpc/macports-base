@@ -388,6 +388,7 @@ proc portconfigure::configure_start {args} {
         {^macports-mpich-gcc-(\d+(?:\.\d+)?)$}     {MacPorts MPICH Wrapper for GCC %s}
         {^macports-openmpi-gcc-(\d+(?:\.\d+)?)$}   {MacPorts Open MPI Wrapper for GCC %s}
         {^macports-(clang|gcc)-devel$}             {MacPorts %s Development}
+        {^macports-gcc-powerpc$}                   {MacPorts GCC Development for PowerPC}
     }
     foreach {re fmt} $valid_compilers {
         if {[set matches [regexp -inline $re $compiler]] ne ""} {
@@ -756,6 +757,7 @@ proc portconfigure::compiler_port_name {compiler} {
         {^macports-(mpich|openmpi|mpich-devel|openmpi-devel)-gcc-(\d+)(?:\.(\d+))?$}  {%s-gcc%s%s}
         {^macports-g95$}                                                              {g95}
         {^macports-(clang|gcc)-devel$}                                                {%s-devel}
+        {^macports-gcc-powerpc$}                                                      {gcc-powerpc}
     }
     foreach {re fmt} $valid_compiler_ports {
         if {[set matches [regexp -inline $re $compiler]] ne ""} {
@@ -1272,7 +1274,7 @@ proc portconfigure::get_clang_compilers {} {
 }
 # utility procedure: get GCC compilers based on os.major
 proc portconfigure::get_gcc_compilers {} {
-    global os.major porturl
+    global os.arch os.major porturl
     set compilers [list]
     set compiler_file [getportresourcepath $porturl "port1.0/compilers/gcc_compilers.tcl"]
     if {[file exists ${compiler_file}]} {
@@ -1280,10 +1282,7 @@ proc portconfigure::get_gcc_compilers {} {
     } else {
         ui_debug "gcc_compilers.tcl not found in ports tree, using built-in selections"
 
-        # GCC 10 and above on OSX10.6+
-        if {${os.major} >= 10 || [option os.platform] ne "darwin"} {
-            lappend compilers macports-gcc-13 macports-gcc-12 macports-gcc-11 macports-gcc-10
-        }
+        lappend compilers macports-gcc-14 macports-gcc-13 macports-gcc-12 macports-gcc-11 macports-gcc-10
 
         # GCC 9 and older only on OSX10.10 and older
         if {${os.major} < 15} {
@@ -1295,6 +1294,10 @@ proc portconfigure::get_gcc_compilers {} {
 
         if {${os.major} >= 10} {
             lappend compilers macports-gcc-devel
+        }
+
+        if {${os.arch} eq "powerpc"} {
+            lappend compilers macports-gcc-powerpc
         }
     }
     return ${compilers}
@@ -1582,6 +1585,17 @@ proc portconfigure::configure_get_compiler {type {compiler {}}} {
                 f90     { return ${prefix_frozen}/bin/gfortran${suffix} }
             }
         }
+    } elseif {$compiler eq "macports-gcc-powerpc"} {
+        switch $type {
+            cc      -
+            objc    { return ${prefix_frozen}/bin/gcc-mp-powerpc }
+            cxx     -
+            objcxx  { return ${prefix_frozen}/bin/g++-mp-powerpc }
+            cpp     { return ${prefix_frozen}/bin/cpp-mp-powerpc }
+            fc      -
+            f77     -
+            f90     { return ${prefix_frozen}/bin/gfortran-mp-powerpc }
+        }
     } elseif {$compiler eq "macports-llvm-gcc-4.2"} {
         switch $type {
             cc      -
@@ -1706,13 +1720,9 @@ proc portconfigure::add_compiler_port_dependencies {compiler} {
 
                 # GCC version providing the primary runtime
                 # Note settings here *must* match those in the lang/libgcc port and compilers PG
-                if {[option os.platform] eq "darwin" && [option os.major] < 10} {
-                    set gcc_main_version 7
-                } else {
-                    set gcc_main_version 13
-                }
+                set gcc_main_version 14
 
-                # compiler links against libraries in libgcc\d* and/or libgcc-devel
+                # compiler links against libraries in libgcc\d* and/or libgcc-*
                 if {[vercmp ${gcc_version} 4.6] < 0} {
                     set libgccs [list path:share/doc/libgcc/README:libgcc port:libgcc45]
                 } elseif {[vercmp ${gcc_version} 7] < 0} {
@@ -1722,7 +1732,7 @@ proc portconfigure::add_compiler_port_dependencies {compiler} {
                 } else {
                     # Using primary GCC version
                     # Do not depend directly on primary runtime port, as implied by libgcc
-                    # and doing so prevents libgcc-devel being used as an alternative.
+                    # and doing so prevents libgcc-* being used as an alternative.
                     set libgccs [list path:share/doc/libgcc/README:libgcc]
                 }
             }

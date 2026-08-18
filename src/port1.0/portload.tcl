@@ -47,7 +47,7 @@ options load.asroot
 set_ui_prefix
 
 proc portload::load_main {args} {
-    global UI_PREFIX prefix subport sudo_user \
+    global UI_PREFIX prefix subport sudo_user os.major \
            portstartupitem::load_only portstartupitem::autostart_only \
            portutil::autoconf::launchctl_path
 
@@ -72,6 +72,13 @@ proc portload::load_main {args} {
                         ui_warn [format [msgcat::mc "Skipping load of startupitem '%s' for %s, root privileges required"] $si_name $subport]
                         set skip 1
                     }
+		} elseif {$si_location eq "LaunchAgents" && ${os.major} == 8} {
+                    if {[getuid] == 0} {
+                        set uid 0
+                    } else {
+                        ui_warn [format [msgcat::mc "Skipping load of startupitem '%s' for %s, root privileges required"] $si_name $subport]
+                        set skip 1
+                    }
                 } elseif {[getuid] == 0} {
                     if {[info exists sudo_user]} {
                         set uid [name_to_uid $sudo_user]
@@ -82,9 +89,20 @@ proc portload::load_main {args} {
                 } else {
                     set uid [getuid]
                 }
+           	# The user context CAN NOT write to the LaunchAgent, only load or unload.
+                # The user context NEEDS to be the one that launches/can access a launchagent.
+                # For some reason on first run it will hang if normal priv is used.
+                # Specify to run it as the true user or just reboot.
+                # Usually -w would enable it, but that will run it as root, we do not want that.
                 if {!$skip} {
-                    ui_notice "$UI_PREFIX [format [msgcat::mc "Loading startupitem '%s' for %s"] $si_name $subport]"
-                    exec_as_uid $uid {system "$launchctl_path load -w $path"}
+                    if {$si_location eq "LaunchAgents" && ${os.major} == 8} {
+                        exec_as_uid $uid {system "sed -i '' '/<key>Disabled<\\/key>/,/<true\\/>/d' $path"}
+                        exec_as_uid $uid {system "chmod 644 $path"}
+                        ui_notice "$UI_PREFIX [format [msgcat::mc "Execute launchctl load $path or reboot to enable persistence for '%s' for %s"] $si_name $subport]"
+                    } else {
+                        ui_notice "$UI_PREFIX [format [msgcat::mc "Loading startupitem '%s' for %s"] $si_name $subport]"
+                        exec_as_uid $uid {system "$launchctl_path load -w $path"}
+                    }
                 }
             }
         }

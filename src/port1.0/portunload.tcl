@@ -47,7 +47,7 @@ options unload.asroot
 set_ui_prefix
 
 proc portunload::unload_main {args} {
-    global UI_PREFIX prefix subport sudo_user \
+    global UI_PREFIX prefix subport sudo_user os.major \
            portutil::autoconf::launchctl_path
 
     portstartupitem::foreach_startupitem {
@@ -69,6 +69,16 @@ proc portunload::unload_main {args} {
                     ui_warn [format [msgcat::mc "Skipping unload of startupitem '%s' for %s, root privileges required"] $si_name $subport]
                     set skip 1
                 }
+	    # To disable an enabled launch agent on Tiger, it uses CFURLWriteDataAndPropertiesToResource()
+            # Which fails unless done as root.
+            # launchctl: CFURLWriteDataAndPropertiesToResource(/Library/LaunchAgents/org.freedesktop.dbus-session.plist) failed: -10
+            } elseif {$si_location eq "LaunchAgents" && ${os.major} == 8} {
+                if {[getuid] == 0} {
+                    set uid 0
+                } else {
+                    ui_warn [format [msgcat::mc "Skipping unload of startupitem '%s' for %s, root privileges required"] $si_name $subport]
+                    set skip 1
+                }
             } elseif {[getuid] == 0} {
                 if {[info exists sudo_user]} {
                     set uid [name_to_uid $sudo_user]
@@ -82,6 +92,11 @@ proc portunload::unload_main {args} {
             if {!$skip} {
                 ui_notice "$UI_PREFIX [format [msgcat::mc "Unloading startupitem '%s' for %s"] $si_name $subport]"
                 exec_as_uid $uid {system "$launchctl_path unload -w $path"}
+                # Disabling it requires root privileges, but the agent itself is under the regular user context.
+                if {$si_location eq "LaunchAgents" && ${os.major} == 8} {
+                    set uid [name_to_uid $sudo_user]
+                    exec_as_uid $uid {system "$launchctl_path unload $path"}
+                }
             }
         }
     }
